@@ -18,6 +18,8 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Diagnostics;
 using System.Timers;
+using System.Windows.Interop;
+using System.Drawing;
 
 namespace TCPWindowVisual
 {
@@ -50,14 +52,12 @@ namespace TCPWindowVisual
 
         private System.Timers.Timer HeartbeatTimer;
 
-
         public MainWindow()
         {
             InitializeComponent();
 
-            Pos = new Vec2d(Application.Current.MainWindow.Top, Application.Current.MainWindow.Left);
-            Size = new Vec2d(Application.Current.MainWindow.Width, Application.Current.MainWindow.Height);
-
+            Pos = Vec2d.Zero();
+            Size = Vec2d.Zero();
 
             Start();
         }
@@ -78,7 +78,7 @@ namespace TCPWindowVisual
 
         private void Window_LocationChanged(object sender, EventArgs e)
         {
-            Pos = new Vec2d(Top, Left);
+            Pos = new Vec2d(Left, Top);
             if(loaded)
             {
                 PosUpdatedToServer = false;
@@ -92,7 +92,7 @@ namespace TCPWindowVisual
             MainNetworkThread = new Thread(MainNetworkLoop);
             MainNetworkThread.Start();
 
-            HeartbeatTimer = new System.Timers.Timer(2000);
+            HeartbeatTimer = new System.Timers.Timer(1000);
             HeartbeatTimer.Elapsed += SendHeartbeat;
             HeartbeatTimer.AutoReset = true;
             HeartbeatTimer.Enabled = true;
@@ -103,9 +103,9 @@ namespace TCPWindowVisual
         private void SendHeartbeat(Object source, ElapsedEventArgs e)
         {
             if (_msgStream != null && ID != -1)
-            { 
-                byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(ID, Status.Heartbeat, Pos, Size)).Concat(Encoding.UTF8.GetBytes("\n")).ToArray();
-                _msgStream.Write(msgBuffer, 0, msgBuffer.Length);
+            {
+                byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(ID, Status.Heartbeat, Pos, Size));
+                //_msgStream.Write(msgBuffer, 0, msgBuffer.Length);
             }
         }
 
@@ -125,7 +125,7 @@ namespace TCPWindowVisual
             {
                 // Tell them that we're a messenger
                 _msgStream = _client.GetStream();
-                byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(-1, Status.RequestId, Pos, Size)).Concat(Encoding.UTF8.GetBytes("\n")).ToArray();
+                byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(-1, Status.RequestId, Pos, Size));
                 _msgStream.Write(msgBuffer, 0, msgBuffer.Length);
 
                 // If we're still connected after sending our name, that means the server accepts us
@@ -146,11 +146,24 @@ namespace TCPWindowVisual
         {
             while (!cancellationTokenSource.IsCancellationRequested)
             {
+                if(_isDisconnected(_client))
+                {
+                    cancellationTokenSource.Cancel();
+                    Dispatcher.Invoke(() =>
+                    {
+                        Stop();
+                    });
+                    break;
+                }    
+
                 if (!PosUpdatedToServer && ID != -1)
                 {
                     _msgStream = _client.GetStream();
-                    byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(ID, Status.PosUpdate, Pos, Size)).Concat(Encoding.UTF8.GetBytes("\n")).ToArray();
-                    try { _msgStream.Write(msgBuffer, 0, msgBuffer.Length); } catch { }
+                    if (!Pos.isNan() && !Size.isNan())
+                    {
+                        byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(ID, Status.PosUpdate, Pos, Size));
+                        try { _msgStream.Write(msgBuffer, 0, msgBuffer.Length); } catch { }
+                    }
                 }
 
                 int messageLength = _client.Available;
@@ -185,31 +198,50 @@ namespace TCPWindowVisual
                             {
                                 windowLocs.Add(new WindowLoc(message.Id, message.Pos, message.Size));
                             }
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ManageLines();
+                            });
                         }
                     }
                 }
             }
         }
 
-        //private void AddMessage(TCPMessage message)
-        //{
-        //    messageQueue.Enqueue(message);
+        private Vec2d GetMiddle(Vec2d pos, Vec2d size)
+        {
+            return new Vec2d(pos.x + size.x / 2, pos.y + size.y / 2);
+        }
 
-        //    // Use Dispatcher to update the UI thread safely
-        //    Dispatcher.Invoke(() =>
-        //    {
-        //        UpdateMessages();
-        //    });
-        //}
+        private void ManageLines()
+        {
+            canvas.Children.Clear();
 
-        //private void UpdateMessages()
-        //{
-        //    while (messageQueue.TryDequeue(out TCPMessage message))
-        //    {
-        //        // Create a new TextBlock for each message and add it to the StackPanel
-        //        MessagesView.Children.Add(new TextBlock { Text = message.Timestamp.ToString("yyyy.MM.dd HH:mm:ss") + " - " + message.Name + ": " + message.Content });
-        //    }
-        //}
+            foreach(WindowLoc w in windowLocs)
+            {
+                Line line = new Line();
+                Vec2d Middle = GetMiddle(Pos,Size);
+                Vec2d Middle2 = GetMiddle(w.Pos,w.Size);
+
+                //line.X1 = Middle.x; 
+                //line.Y1 = Middle.y; 
+                //line.X2 = Middle2.x; 
+                //line.Y2 = Middle2.y;
+
+                line.X1 = Size.x/2; 
+                line.Y1 = Size.y/2;
+                line.X2 = Middle2.x;
+                line.Y2 = Middle2.y;
+
+
+                // Set line color and thickness
+                line.Stroke = System.Windows.Media.Brushes.Red; // Change the color as needed
+                line.StrokeThickness = 2;
+
+                // Add the line to the canvas
+                canvas.Children.Add(line);
+            }
+        }
 
         private void Window_Closing(object sender, EventArgs e)
         {
@@ -219,7 +251,6 @@ namespace TCPWindowVisual
                 if (!MainNetworkThread.Join(TimeSpan.FromSeconds(10)))
                 {
                     MessageBox.Show("Error closing main thread!");
-                    Stop();
                     foreach (var process in Process.GetProcessesByName("TCPWindowVisual"))
                     {
                         process.Kill();
@@ -227,7 +258,6 @@ namespace TCPWindowVisual
                 }
             }
             Stop();
-            Application.Current.Shutdown();
         }
 
 
@@ -237,6 +267,7 @@ namespace TCPWindowVisual
             _msgStream?.Close();
             _msgStream = null;
             _client?.Close();
+            Application.Current.Shutdown();
         }
 
         private static bool _isDisconnected(TcpClient client)
@@ -253,6 +284,12 @@ namespace TCPWindowVisual
             }
         }
 
-        
+        private void Window_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left)
+            {
+                DragMove();
+            }
+        }
     }
 }

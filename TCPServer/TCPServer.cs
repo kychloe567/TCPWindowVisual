@@ -120,10 +120,12 @@ namespace TCPServer
                         _clients.Add(newClient);
                         windowLocs.Add(newClient, new WindowLoc(currentFreeId, Vec2d.Zero(), Vec2d.Zero()));
 
-                        byte[] assignIdMsg = TCPMessage.Serialize(new TCPMessage(currentFreeId, Status.GivenId, Vec2d.Zero(),Vec2d.Zero())).Concat(Encoding.UTF8.GetBytes("\n")).ToArray();
+                        byte[] assignIdMsg = TCPMessage.Serialize(new TCPMessage(currentFreeId, Status.GivenId, Vec2d.Zero(),Vec2d.Zero()));
                         newClient.GetStream().Write(assignIdMsg, 0, assignIdMsg.Length);
 
                         Console.WriteLine("{0} given Id of {1}.", endPoint, currentFreeId);
+
+
 
                         currentFreeId++;
                     }
@@ -136,14 +138,21 @@ namespace TCPServer
         {
             foreach (TcpClient m in _clients.ToArray())
             {
-                //if ((DateTime.Now - windowLocs[m].LastHeartbeat).TotalSeconds > 3)
-                //{
-                //    Console.WriteLine("Window with ID of {0} closed.", windowLocs[m].Id);
-                //    _clients.Remove(m);
-                //    windowLocs.Remove(m);
-                //    _cleanupClient(m);
-                //}
-
+                if (_isDisconnected(m))
+                {
+                    Console.WriteLine("Window with ID of {0} closed.", windowLocs[m].Id);
+                    _clients.Remove(m);
+                    windowLocs.Remove(m);
+                    _cleanupClient(m);
+                }
+                else if ((DateTime.Now - windowLocs[m].LastHeartbeat).TotalSeconds > 3)
+                {
+                    //Console.WriteLine("Window with ID of {0} closed.", windowLocs[m].Id);
+                    //_clients.Remove(m);
+                    //windowLocs.Remove(m);
+                    //_cleanupClient(m);
+                }
+                
             }
         }
 
@@ -173,7 +182,6 @@ namespace TCPServer
                         else if(message.Status == Status.Heartbeat)
                         {
                             windowLocs[m].LastHeartbeat = DateTime.Now;
-                            Console.WriteLine("hb");
                         }
                     }
                 }
@@ -185,8 +193,10 @@ namespace TCPServer
         {
             foreach (TCPMessage msg in _messageQueue)
             {
+                if (msg.Pos.isNan()) msg.Pos = Vec2d.Zero();
+                if (msg.Size.isNan()) msg.Size = Vec2d.Zero();
                 // Encode the message
-                byte[] msgBuffer = TCPMessage.Serialize(msg).Concat(Encoding.UTF8.GetBytes("\n")).ToArray();
+                byte[] msgBuffer = TCPMessage.Serialize(msg);
 
                 // Send the message to each viewer
                 foreach (TcpClient v in _clients)

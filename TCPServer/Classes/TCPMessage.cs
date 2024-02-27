@@ -20,8 +20,13 @@ namespace TCPServer
             this.x = x; this.y = y;
         }
 
-        public double x;
-        public double y;
+        public double x { get; set; }
+        public double y { get; set; }
+
+        public bool isNan()
+        {
+            return double.IsNaN(x) || double.IsNaN(y);
+        }
 
         public static Vec2d Zero()
         {
@@ -30,7 +35,7 @@ namespace TCPServer
 
         public string Str()
         {
-            return "(" + x.ToString() + "," + y.ToString() + ")";
+            return "(" + Math.Round(x,2).ToString() + "," + Math.Round(y, 2).ToString() + ")";
         }
     }
 
@@ -71,7 +76,7 @@ namespace TCPServer
 
         public static byte[] Serialize(TCPMessage msg)
         {
-            var jsonString = JsonSerializer.Serialize(msg);
+            var jsonString = JsonSerializer.Serialize(msg) + "\n";
             return Encoding.UTF8.GetBytes(jsonString);
         }
 
@@ -90,7 +95,7 @@ namespace TCPServer
                 TCPMessage? msg = null;
                 try
                 {
-                    msg = JsonSerializer.Deserialize<TCPMessage>(jsonString);
+                    msg = JsonSerializer.Deserialize<TCPMessage>(message);
                     messages.Add(msg);
                 }
                 catch (Exception e) { }
