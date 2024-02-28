@@ -44,10 +44,12 @@ namespace TCPWindowVisual
 
         private Thread MainNetworkThread;
 
-        private bool PosUpdatedToServer = false;
         public List<WindowLoc> windowLocs = new List<WindowLoc>();
 
+        private bool PosUpdatedToServer = false;
+        private Vec2d LastPos = null;
         private Vec2d Pos { get; set; } = new Vec2d();
+        private Vec2d LastSize = null;
         private Vec2d Size { get; set; } = new Vec2d();
         private bool loaded = false;
 
@@ -61,8 +63,8 @@ namespace TCPWindowVisual
         {
             InitializeComponent();
 
-            Left = rnd.Next(0, 800 - 300);
-            Top = rnd.Next(0, 600 - 300);
+            Left = rnd.Next(0, 1920 - 300);
+            Top = rnd.Next(0, 1080 - 300);
             Pos = new Vec2d(Top, Left);
             Size = Vec2d.Zero();
 
@@ -78,8 +80,9 @@ namespace TCPWindowVisual
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             Size = new Vec2d(e.NewSize.Width, e.NewSize.Height);
-            if(loaded)
+            if(loaded && (LastSize == null || (LastSize.x != Size.x || LastSize.y != Size.y)))
             {
+                LastSize = new Vec2d(Size.x, Size.y);
                 PosUpdatedToServer = false;
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -91,8 +94,9 @@ namespace TCPWindowVisual
         private void Window_LocationChanged(object sender, EventArgs e)
         {
             Pos = new Vec2d(Left, Top);
-            if(loaded)
+            if (loaded && (LastPos == null || (LastPos.x != Pos.x || LastPos.y != Pos.y)))
             {
+                LastPos = new Vec2d(Pos.x, Pos.y);
                 PosUpdatedToServer = false;
                 Application.Current.Dispatcher.Invoke(() =>
                 {
@@ -229,9 +233,38 @@ namespace TCPWindowVisual
                                 ManageLines();
                             });
                         }
+                        else if(message.Status == Status.AlignCircle)
+                        {
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                AlignCircle();
+                            });
+                        }
                     }
                 }
             }
+        }
+
+        private void AlignCircle()
+        {
+            //float wPerCircle = 6;
+            //float radius = 300;
+            //float index = ID;
+            //if (ID > wPerCircle)
+            //{
+            //    radius = 150;
+            //    index = ID - wPerCircle;
+            //}
+            //Left = 1920 / 2 - 150 + (Math.Cos(CTR(360 / wPerCircle * index)) * radius);
+            //Top = 1080 / 2 - 150 + (Math.Sin(CTR(360 / wPerCircle * index)) * radius);
+
+            Left = 1920 / 2 - 150 + (Math.Cos(CTR(360 / 12 * ID)) * 350);
+            Top = 1080 / 2 - 150 + (Math.Sin(CTR(360 / 12 * ID)) * 350);
+        }
+
+        private double CTR(double angle)
+        {
+            return (Math.PI / 180) * angle;
         }
 
         private Vec2d GetMiddle(Vec2d pos, Vec2d size)
@@ -254,14 +287,6 @@ namespace TCPWindowVisual
         private Brush PickBrush(int num1, int num2)
         {
             Brush result = Brushes.Transparent;
-
-            //Type brushesType = typeof(Brushes);
-
-            //PropertyInfo[] properties = brushesType.GetProperties();
-
-            //int random = rnd.Next(properties.Length);
-            //result = (Brush)properties[random].GetValue(null, null);
-
             Type brushesType = typeof(Brushes);
             PropertyInfo[] properties = brushesType.GetProperties();
             result = (Brush)properties[GetBrushFromIds(num1,num2)].GetValue(null, null);
@@ -273,7 +298,13 @@ namespace TCPWindowVisual
         {
             canvas.Children.Clear();
 
-            Vec2d Mid = GetMiddle(Pos, Size);
+            List<LineSegment> borderLines = new List<LineSegment>()
+                {
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x, (float)Pos.y+(float)Size.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x,(float)Pos.y)),
+                };
 
             foreach (WindowLoc w in windowLocs)
             {
@@ -284,13 +315,6 @@ namespace TCPWindowVisual
 
                 LineSegment mainLine = new LineSegment(new System.Numerics.Vector2((float)Pos.x+ (float)Size.x/2, (float)Pos.y+ (float)Size.y/2), 
                                                        new System.Numerics.Vector2((float)w.Pos.x + (float)w.Size.x / 2, (float)w.Pos.y + (float)w.Size.y / 2));
-                List<LineSegment> borderLines = new List<LineSegment>()
-                {
-                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y)),
-                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y)),
-                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x, (float)Pos.y+(float)Size.y)),
-                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x,(float)Pos.y)),
-                };
 
                 var intersect = System.Numerics.Vector2.Zero;
                 bool found = false;
@@ -339,6 +363,9 @@ namespace TCPWindowVisual
 
                     Vec2d w2Mid = GetMiddle(w2.Pos, w2.Size);
 
+                    if (!InsideOwnWindow(new LineSegment(new Vector2((float)w1Mid.x,(float)w1Mid.y), new Vector2((float)w2Mid.x, (float)w2Mid.y)), borderLines))
+                        continue;
+
                     Line line2 = new Line();
                     line2.X1 = w1Mid.x - Pos.x;
                     line2.Y1 = w1Mid.y - Pos.y;
@@ -355,6 +382,19 @@ namespace TCPWindowVisual
                     canvas.Children.Add(line2);
                 }
             }
+        }
+
+        private bool InsideOwnWindow(LineSegment line, List<LineSegment> rect)
+        {
+            System.Drawing.Rectangle r = new System.Drawing.Rectangle((int)Pos.x, (int)Pos.y, (int)Size.x, (int)Size.y);
+            System.Drawing.Point p1 = new System.Drawing.Point((int)line.From.X, (int)line.From.Y);
+            System.Drawing.Point p2 = new System.Drawing.Point((int)line.To.X, (int)line.To.Y);
+
+            return line.TryIntersect(rect[0], out Vector2 v0) ||
+                   line.TryIntersect(rect[1], out Vector2 v1) ||
+                   line.TryIntersect(rect[2], out Vector2 v2) ||
+                   line.TryIntersect(rect[3], out Vector2 v3) ||
+                   r.Contains(p1) || r.Contains(p2);
         }
 
         private void Window_Closing(object sender, EventArgs e)

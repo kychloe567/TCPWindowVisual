@@ -48,6 +48,7 @@ namespace TCPServer
         PosOk,
         Heartbeat,
         DisconnectedWindow,
+        AlignCircle,
         Nothing
     }
 

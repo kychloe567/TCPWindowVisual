@@ -19,6 +19,8 @@ namespace TCPServer
         // types of clients connected
         private List<TcpClient> _clients = new List<TcpClient>();
         private Dictionary<TcpClient, WindowLoc> windowLocs = new Dictionary<TcpClient, WindowLoc>();
+        private bool circleAligned = false;
+        private const int startCount = 12;
 
         private int currentFreeId = 1;
 
@@ -66,7 +68,7 @@ namespace TCPServer
             _listener.Start();
             Running = true;
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < startCount; i++)
             {
                 Process.Start("C:\\Users\\Chloe\\Desktop\\GithubProjects\\TCPWindowVisual\\TCPWindowVisual\\bin\\Debug\\net6.0-windows\\TCPWindowVisual.exe");
             }
@@ -82,6 +84,7 @@ namespace TCPServer
                 _checkForDisconnects();
                 _checkForNewMessages();
                 _sendMessages();
+                _allConnected();
 
                 // Use less CPU
                 Thread.Sleep(10);
@@ -94,6 +97,19 @@ namespace TCPServer
 
             // Some info
             Console.WriteLine("Server is shut down.");
+        }
+
+        private void _allConnected()
+        {
+            if(_clients.Count() == startCount && !windowLocs.Any(x => x.Value.Id == -1) && !circleAligned)
+            {
+                foreach(TcpClient v in _clients)
+                {
+                    var alignCircle = new TCPMessage(0, Status.AlignCircle, Vec2d.Zero(), Vec2d.Zero());
+                    _messageQueue.Enqueue(alignCircle);
+                }
+                circleAligned = true;
+            }
         }
 
         private void _handleNewConnection()
@@ -130,8 +146,6 @@ namespace TCPServer
                         newClient.GetStream().Write(assignIdMsg, 0, assignIdMsg.Length);
 
                         Console.WriteLine("{0} given Id of {1}.", endPoint, currentFreeId);
-
-
 
                         currentFreeId++;
                     }
