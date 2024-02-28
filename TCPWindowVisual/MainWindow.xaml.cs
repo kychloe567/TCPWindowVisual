@@ -20,6 +20,9 @@ using System.Diagnostics;
 using System.Timers;
 using System.Windows.Interop;
 using System.Drawing;
+using LineSegment = TCPServer.LineSegment;
+using System.Numerics;
+using System.Reflection;
 
 namespace TCPWindowVisual
 {
@@ -52,11 +55,15 @@ namespace TCPWindowVisual
 
         private System.Timers.Timer HeartbeatTimer;
 
+        private static Random rnd = new Random((int)DateTime.Now.Ticks);
+
         public MainWindow()
         {
             InitializeComponent();
 
-            Pos = Vec2d.Zero();
+            Left = rnd.Next(0, 800 - 300);
+            Top = rnd.Next(0, 600 - 300);
+            Pos = new Vec2d(Top, Left);
             Size = Vec2d.Zero();
 
             Start();
@@ -65,6 +72,7 @@ namespace TCPWindowVisual
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             loaded = true;
+            PosUpdatedToServer = false;
         }
 
         private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -73,6 +81,10 @@ namespace TCPWindowVisual
             if(loaded)
             {
                 PosUpdatedToServer = false;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ManageLines();
+                });
             }
         }
 
@@ -82,6 +94,10 @@ namespace TCPWindowVisual
             if(loaded)
             {
                 PosUpdatedToServer = false;
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ManageLines();
+                });
             }
         }
 
@@ -98,6 +114,8 @@ namespace TCPWindowVisual
             HeartbeatTimer.Enabled = true;
 
             Cursor = Cursors.Arrow;
+
+            //SendHeartbeat(null, null);
         }
 
         private void SendHeartbeat(Object source, ElapsedEventArgs e)
@@ -105,7 +123,7 @@ namespace TCPWindowVisual
             if (_msgStream != null && ID != -1)
             {
                 byte[] msgBuffer = TCPMessage.Serialize(new TCPMessage(ID, Status.Heartbeat, Pos, Size));
-                //_msgStream.Write(msgBuffer, 0, msgBuffer.Length);
+                _msgStream.Write(msgBuffer, 0, msgBuffer.Length);
             }
         }
 
@@ -203,6 +221,14 @@ namespace TCPWindowVisual
                                 ManageLines();
                             });
                         }
+                        else if(message.Status == Status.DisconnectedWindow)
+                        {
+                            windowLocs.Remove(windowLocs.Where(x => x.Id == message.Id).First());
+                            Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                ManageLines();
+                            });
+                        }
                     }
                 }
             }
@@ -213,33 +239,121 @@ namespace TCPWindowVisual
             return new Vec2d(pos.x + size.x / 2, pos.y + size.y / 2);
         }
 
+        private int GetBrushFromIds(int num1, int num2)
+        {
+            // Combine the integers to create a unique index
+            // This is a simple example; you might need a more complex function to ensure uniqueness
+            int index = (num1 * 100) + num2; // Ensure the index is within the range of available brushes
+
+            // Use modulo to ensure the index wraps around if it exceeds the number of brushes
+            index = index % 141;
+
+            return index;
+        }
+
+        private Brush PickBrush(int num1, int num2)
+        {
+            Brush result = Brushes.Transparent;
+
+            //Type brushesType = typeof(Brushes);
+
+            //PropertyInfo[] properties = brushesType.GetProperties();
+
+            //int random = rnd.Next(properties.Length);
+            //result = (Brush)properties[random].GetValue(null, null);
+
+            Type brushesType = typeof(Brushes);
+            PropertyInfo[] properties = brushesType.GetProperties();
+            result = (Brush)properties[GetBrushFromIds(num1,num2)].GetValue(null, null);
+
+            return result;
+        }
+
         private void ManageLines()
         {
             canvas.Children.Clear();
 
-            foreach(WindowLoc w in windowLocs)
+            Vec2d Mid = GetMiddle(Pos, Size);
+
+            foreach (WindowLoc w in windowLocs)
             {
                 Line line = new Line();
-                Vec2d Middle = GetMiddle(Pos,Size);
-                Vec2d Middle2 = GetMiddle(w.Pos,w.Size);
-
-                //line.X1 = Middle.x; 
-                //line.Y1 = Middle.y; 
-                //line.X2 = Middle2.x; 
-                //line.Y2 = Middle2.y;
 
                 line.X1 = Size.x/2; 
                 line.Y1 = Size.y/2;
-                line.X2 = Middle2.x;
-                line.Y2 = Middle2.y;
 
+                LineSegment mainLine = new LineSegment(new System.Numerics.Vector2((float)Pos.x+ (float)Size.x/2, (float)Pos.y+ (float)Size.y/2), 
+                                                       new System.Numerics.Vector2((float)w.Pos.x + (float)w.Size.x / 2, (float)w.Pos.y + (float)w.Size.y / 2));
+                List<LineSegment> borderLines = new List<LineSegment>()
+                {
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y), new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x+(float)Size.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x, (float)Pos.y+(float)Size.y)),
+                    new LineSegment(new System.Numerics.Vector2((float)Pos.x,(float)Pos.y+(float)Size.y), new System.Numerics.Vector2((float)Pos.x,(float)Pos.y)),
+                };
+
+                var intersect = System.Numerics.Vector2.Zero;
+                bool found = false;
+                foreach (var borderLine in borderLines)
+                {
+                    if (mainLine.TryIntersect(borderLine, out intersect))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    line.X2 = intersect.X - (float)Pos.x;
+                    line.Y2 = intersect.Y - (float)Pos.y;
+                }
+                else
+                {
+                    line.X2 = (w.Pos.x + w.Size.x / 2) - (Pos.x);
+                    line.Y2 = (w.Pos.y + w.Size.y / 2) - (Pos.y);
+                }
 
                 // Set line color and thickness
-                line.Stroke = System.Windows.Media.Brushes.Red; // Change the color as needed
+                //line.Stroke = Brushes.Red;
+                if(ID < w.Id)
+                    line.Stroke = PickBrush(ID, w.Id);
+                else
+                    line.Stroke = PickBrush(w.Id,ID);
                 line.StrokeThickness = 2;
 
-                // Add the line to the canvas
                 canvas.Children.Add(line);
+            }
+
+            foreach (var w1 in windowLocs)
+            {
+                if (w1.Id == ID)
+                    continue;
+
+                Vec2d w1Mid = GetMiddle(w1.Pos, w1.Size);
+
+                foreach (var w2 in windowLocs)
+                {
+                    if (w1.Id == w2.Id || w2.Id == ID)
+                        continue;
+
+                    Vec2d w2Mid = GetMiddle(w2.Pos, w2.Size);
+
+                    Line line2 = new Line();
+                    line2.X1 = w1Mid.x - Pos.x;
+                    line2.Y1 = w1Mid.y - Pos.y;
+                    line2.X2 = w2Mid.x - Pos.x;
+                    line2.Y2 = w2Mid.y - Pos.y;
+
+                    //line2.Stroke = Brushes.Red;
+                    if (w1.Id < w2.Id)
+                        line2.Stroke = PickBrush(w1.Id, w2.Id);
+                    else
+                        line2.Stroke = PickBrush(w2.Id, w1.Id);
+                    line2.StrokeThickness = 2;
+
+                    canvas.Children.Add(line2);
+                }
             }
         }
 

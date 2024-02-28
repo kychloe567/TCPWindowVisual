@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Xml.Linq;
+using System.Diagnostics;
 
 namespace TCPServer
 {
@@ -62,8 +63,13 @@ namespace TCPServer
             {
                 throw new Exception("Class constuctor failed to initialize the Listener!");
             }
-            _listener.Start();           // No backlog
+            _listener.Start();
             Running = true;
+
+            for (int i = 0; i < 5; i++)
+            {
+                Process.Start("C:\\Users\\Chloe\\Desktop\\GithubProjects\\TCPWindowVisual\\TCPWindowVisual\\bin\\Debug\\net6.0-windows\\TCPWindowVisual.exe");
+            }
 
             // Main server loop
             while (Running)
@@ -141,6 +147,7 @@ namespace TCPServer
                 if (_isDisconnected(m))
                 {
                     Console.WriteLine("Window with ID of {0} closed.", windowLocs[m].Id);
+                    WindowDisconnectedBroadcast(windowLocs[m].Id);
                     _clients.Remove(m);
                     windowLocs.Remove(m);
                     _cleanupClient(m);
@@ -148,6 +155,7 @@ namespace TCPServer
                 else if ((DateTime.Now - windowLocs[m].LastHeartbeat).TotalSeconds > 3)
                 {
                     //Console.WriteLine("Window with ID of {0} closed.", windowLocs[m].Id);
+                    //WindowDisconnectedBroadcast(windowLocs[m].Id);
                     //_clients.Remove(m);
                     //windowLocs.Remove(m);
                     //_cleanupClient(m);
@@ -182,6 +190,11 @@ namespace TCPServer
                         else if(message.Status == Status.Heartbeat)
                         {
                             windowLocs[m].LastHeartbeat = DateTime.Now;
+                            windowLocs[m].Pos = message.Pos;
+                            windowLocs[m].Size = message.Size;
+                            message.Status = Status.PosOk;
+                            _messageQueue.Enqueue(message);
+
                         }
                     }
                 }
@@ -205,6 +218,12 @@ namespace TCPServer
 
             // clear out the queue
             _messageQueue.Clear();
+        }
+
+        private void WindowDisconnectedBroadcast(int id)
+        {
+            var disconnectMsg = new TCPMessage(id, Status.DisconnectedWindow, Vec2d.Zero(), Vec2d.Zero());
+            _messageQueue.Enqueue(disconnectMsg);
         }
 
         // Checks if a socket has disconnected

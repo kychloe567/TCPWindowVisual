@@ -47,6 +47,7 @@ namespace TCPServer
         PosUpdate,
         PosOk,
         Heartbeat,
+        DisconnectedWindow,
         Nothing
     }
 
